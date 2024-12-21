@@ -58,7 +58,7 @@ const Producto = {
         `;
 
 
-      const valuesProducto = [idCategoria, nombre, precioFinal, stock, descripcion, imagen];
+      const valuesProducto = [idCategoria, nombre, precioFinal/stock, stock, descripcion, imagen];
       const [result] = await db.query(queryProducto, valuesProducto);
       const idProducto = result.insertId;
 

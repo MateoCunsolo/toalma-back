@@ -47,10 +47,10 @@ const Ingredient = {
             }
 
             let costoActual = ingredient.precioComprado / ( ingredient.cantidadComprada * ingredient.equivalencia );
-            const { nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, imagen, idCategoriaIngrediente } = ingredient;
+            const { nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, idCategoriaIngrediente } = ingredient;
 
-            const query = 'INSERT INTO INGREDIENTE (nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, costo, imagen, idCategoriaIngrediente) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
-            const [result] = await db.query(query, [nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, costoActual, imagen, idCategoriaIngrediente]);
+            const query = 'INSERT INTO INGREDIENTE (nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, costo, idCategoriaIngrediente) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+            const [result] = await db.query(query, [nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, costoActual, idCategoriaIngrediente]);
 
             if (result.affectedRows > 0) {
                 return { success: true, message: 'Ingrediente creado correctamente.', data: { idIngrediente: result.insertId } };
