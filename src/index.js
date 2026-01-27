@@ -13,6 +13,7 @@ app.use(cors());
 
 // Users
 const authRoutes = require('./routes/authRoutes');
+const settingsRoutes = require('./routes/settingsRoutes');
 
 //Products
 const productsRoutes = require('./routes/productsRoutes');
@@ -40,6 +41,7 @@ app.use('/categorias-ingredientes', ingredientsCategoriesRoutes);
 
 // Rutas de usuarios
 app.use('/auth', authRoutes);
+app.use('/settings', settingsRoutes);
 
 // Manejo de rutas no encontradas
 app.use((req, res, next) => {
@@ -50,5 +52,5 @@ app.use((req, res, next) => {
 // ============================================== Puerto ===================================================
 const PORT = process.env.PORT;
 app.listen(PORT, () => {
-    console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`✅ Servidor corriendo en http://localhost:${PORT || 3000}`);
 });

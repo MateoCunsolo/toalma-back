@@ -10,9 +10,6 @@ const authGuard = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
-        if (req.JWT_SECRET !== decoded.JWT_SECRET) {
-            return res.status(403).json({ message: 'Token inválido o expirado.' });
-        }
         next();
     } catch (err) {
         return res.status(403).json({ message: 'Token inválido o expirado.' });

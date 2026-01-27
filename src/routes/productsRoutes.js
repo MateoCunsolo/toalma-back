@@ -14,6 +14,7 @@ router.get('/categoria/:categoria', productosController.getProductosByCategory);
 //ACTUALIZAR
 router.put('/update/all-imagenes', authGuard, productosController.updateALLIMG);
 router.put('/update/stock/:id', authGuard, productosController.updateProductoStockById);
+router.put('/update/stock-increase/:id', authGuard, productosController.increaseProductoStock);
 router.put('/update/precio/:id', authGuard, productosController.updateProductoPriceById);
 router.put('/update/descripcion/:id', authGuard, productosController.updateProductoDescriptionById);
 router.put('/update/nombre/:id', authGuard, productosController.updateProductoNameById);

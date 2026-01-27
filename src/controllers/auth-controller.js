@@ -24,7 +24,7 @@ const login = async (req, res) => {
     }
 
     const payload = {
-      id: usuario.id,
+      id: usuario.idUsuario || usuario.id,
       nombre: usuario.nombre,
       apellido: usuario.apellido,
       correo_electronico: usuario.correo_electronico,
@@ -63,4 +63,47 @@ const register = async (req, res) => {
   }
 };
 
-module.exports = { login, register };
+const getProfile = async (req, res) => {
+  try {
+    const id = req.user?.id;
+    const result = await Usuario.getById(id);
+    if (result.error) {
+      return res.status(404).json({ error: result.error });
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error al obtener perfil:', error);
+    res.status(500).json({ error: 'Error al obtener perfil' });
+  }
+};
+
+const updateProfile = async (req, res) => {
+  try {
+    const id = req.user?.id;
+    const result = await Usuario.updateProfile(id, req.body);
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.status(200).json({ message: result.message });
+  } catch (error) {
+    console.error('Error al actualizar perfil:', error);
+    res.status(500).json({ error: 'Error al actualizar perfil' });
+  }
+};
+
+const changePassword = async (req, res) => {
+  try {
+    const id = req.user?.id;
+    const { currentPassword, newPassword } = req.body;
+    const result = await Usuario.updatePassword(id, currentPassword, newPassword);
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.status(200).json({ message: result.message });
+  } catch (error) {
+    console.error('Error al actualizar contraseña:', error);
+    res.status(500).json({ error: 'Error al actualizar contraseña' });
+  }
+};
+
+module.exports = { login, register, getProfile, updateProfile, changePassword };

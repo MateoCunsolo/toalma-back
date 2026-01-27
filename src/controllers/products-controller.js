@@ -64,6 +64,21 @@ const updateProductoStockById = async (req, res) => {
   }
 }
 
+const increaseProductoStock = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { delta } = req.body;
+    const result = await productoModel.updateStockWithIngredients(id, Number(delta));
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error al aumentar stock:', error.message);
+    res.status(500).json({ error: 'Error al aumentar stock' });
+  }
+}
+
 const updateProductoPriceById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -175,6 +190,7 @@ module.exports = {
   getProductoById,
   getProductosByCategory,
   updateProductoStockById,
+  increaseProductoStock,
   updateProductoPriceById,
   updateProductoDescriptionById,
   updateProductoNameById,
@@ -183,5 +199,6 @@ module.exports = {
   updateProductoById,
   createProducto,
   deleteProductoById,
-  updateALLIMG
+  updateALLIMG,
+  increaseProductoStock
 };
