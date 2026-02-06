@@ -226,6 +226,57 @@ const Ingredient = {
         }
     }
     ,
+    bulkUpdateCategory: async (ingredientIds, idCategoriaIngrediente) => {
+        try {
+            if (!Array.isArray(ingredientIds) || ingredientIds.length === 0) {
+                return { success: false, message: 'Debes seleccionar al menos un ingrediente.' };
+            }
+            if (!idCategoriaIngrediente || isNaN(idCategoriaIngrediente)) {
+                return { success: false, message: 'La categoría es inválida.' };
+            }
+
+            const ids = ingredientIds.map((value) => Number(value)).filter((value) => !Number.isNaN(value));
+            if (ids.length === 0) {
+                return { success: false, message: 'No hay ingredientes válidos para actualizar.' };
+            }
+
+            const [categoryRows] = await db.query(
+                'SELECT idCategoriaIngrediente FROM CATEGORIA_INGREDIENTE WHERE idCategoriaIngrediente = ?',
+                [Number(idCategoriaIngrediente)]
+            );
+            if (!categoryRows.length) {
+                return { success: false, message: 'La categoría no existe.' };
+            }
+
+            const placeholders = ids.map(() => '?').join(',');
+            const [existing] = await db.query(
+                `SELECT idIngrediente FROM INGREDIENTE WHERE idIngrediente IN (${placeholders})`,
+                ids
+            );
+            if (!existing.length) {
+                return { success: false, message: 'No se encontraron ingredientes para actualizar.' };
+            }
+
+            const query = `UPDATE INGREDIENTE SET idCategoriaIngrediente = ? WHERE idIngrediente IN (${placeholders})`;
+            const [result] = await db.query(query, [Number(idCategoriaIngrediente), ...ids]);
+
+            if (result.affectedRows > 0) {
+                await ensureAuditTable();
+                const auditValues = existing.map((row) => [row.idIngrediente, 'CAMBIO_CATEGORIA', 0, null, null]);
+                const auditPlaceholders = auditValues.map(() => '(?, ?, ?, ?, ?)').join(',');
+                await db.query(
+                    `INSERT INTO INGREDIENTE_AUDIT (idIngrediente, accion, delta, precio, proveedor) VALUES ${auditPlaceholders}`,
+                    auditValues.flat()
+                );
+                return { success: true, message: 'Categorías actualizadas correctamente.' };
+            }
+
+            return { success: false, message: 'No se actualizaron ingredientes.' };
+        } catch (error) {
+            console.error('Error al actualizar categorías en lote:', error);
+            return { success: false, message: 'Hubo un error al actualizar las categorías.' };
+        }
+    },
     adjustStock: async (id, delta, proveedor, precioComprado) => {
         try {
             if (!id || isNaN(id)) {

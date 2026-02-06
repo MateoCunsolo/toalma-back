@@ -5,6 +5,7 @@ const authGuard = require('../middlewares/authGuard');
 
 router.post('/create', authGuard, ingredientsController.createIngredient);
 router.get('/', authGuard, ingredientsController.getIngredients);
+router.put('/bulk-update-category', authGuard, ingredientsController.bulkUpdateIngredientCategory);
 router.get('/:id', authGuard, ingredientsController.getIngredientById);
 router.get('/:id/compras', authGuard, ingredientsController.getIngredientPurchases);
 router.get('/:id/auditoria', authGuard, ingredientsController.getIngredientAudit);

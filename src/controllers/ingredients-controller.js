@@ -50,6 +50,16 @@ const updateIngredientById = async (req, res) => {
     }
 };
 
+const bulkUpdateIngredientCategory = async (req, res) => {
+    try {
+        const { ingredientIds, idCategoriaIngrediente } = req.body;
+        const result = await ingrdient.bulkUpdateCategory(ingredientIds, idCategoriaIngrediente);
+        res.status(200).json(result);
+    } catch (error) {
+        res.status(500).json({ error });
+    }
+};
+
 const adjustIngredientStock = async (req, res) => {
     try {
         const { id } = req.params;
@@ -101,4 +111,4 @@ const getIngredientAudit = async (req, res) => {
     }
 };
 
-module.exports = { getIngredients, createIngredient, deleteIngredientById, getIngredientById, updateIngredientById, adjustIngredientStock, getIngredientPurchases, updateIngredientPurchase, deleteIngredientPurchase, getIngredientAudit };
+module.exports = { getIngredients, createIngredient, deleteIngredientById, getIngredientById, updateIngredientById, bulkUpdateIngredientCategory, adjustIngredientStock, getIngredientPurchases, updateIngredientPurchase, deleteIngredientPurchase, getIngredientAudit };
