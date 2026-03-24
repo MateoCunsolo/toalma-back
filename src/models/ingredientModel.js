@@ -34,6 +34,10 @@ const calculateEquivalence = (unidadComprada, unidadDeMedida) => {
         return 1;
     }
 
+    if (unidadComprada === unidadDeMedida) {
+        return 1;
+    }
+
     return 0;
 };
 
@@ -235,11 +239,6 @@ const Ingredient = {
             }
             const current = currentRows[0];
             const [purchaseCount] = await db.query('SELECT COUNT(1) AS total FROM INGREDIENTE_COMPRA WHERE idIngrediente = ?', [id]);
-            if (purchaseCount[0]?.total > 0) {
-                if (ingredient.unidadComprada !== current.unidadComprada || ingredient.unidadDeMedida !== current.unidadDeMedida) {
-                    return { success: false, message: 'No se puede cambiar la unidad si ya hay historial de compras.' };
-                }
-            }
 
             const { nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, imagen, idCategoriaIngrediente } = ingredient;
             const equivalencia = calculateEquivalence(unidadComprada, unidadDeMedida);
@@ -249,6 +248,15 @@ const Ingredient = {
             }
 
             const costo = Number(precioComprado) / Number(equivalencia);
+
+            await ensurePurchaseTable();
+            const comprasCount = Number(purchaseCount[0]?.total || 0);
+            if (comprasCount > 0 && String(unidadComprada) !== String(current.unidadComprada)) {
+                await db.query(
+                    'UPDATE INGREDIENTE_COMPRA SET unidad = ? WHERE idIngrediente = ?',
+                    [unidadComprada, id]
+                );
+            }
 
             const query = 'UPDATE INGREDIENTE SET nombre = ?, cantidadComprada = ?, unidadComprada = ?, precioComprado = ?, unidadDeMedida = ?, equivalencia = ?, costo = ?, imagen = ?, idCategoriaIngrediente = ? WHERE idIngrediente = ?';
             const [result] = await db.query(query, [nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, costo, imagen, idCategoriaIngrediente, id]);

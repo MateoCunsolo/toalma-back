@@ -1,6 +1,95 @@
 const db = require('../../database/db');
 const { create } = require('./userModel');
 
+const INGREDIENTS_FOR_PRODUCT_SQL = `
+  SELECT INGREDIENTE.idIngrediente, INGREDIENTE.cantidadComprada, INGREDIENTE.unidadComprada,
+         INGREDIENTE.unidadDeMedida, INGREDIENTE.equivalencia, PRODUCTO_X_INGREDIENTE.cantidadUsada
+  FROM INGREDIENTE
+  JOIN PRODUCTO_X_INGREDIENTE ON INGREDIENTE.idIngrediente = PRODUCTO_X_INGREDIENTE.idIngrediente
+  WHERE PRODUCTO_X_INGREDIENTE.idProducto = ?
+`;
+
+/**
+ * deltaStock > 0: descuenta ingredientes (más unidades de producto)
+ * deltaStock < 0: devuelve ingredientes al inventario (menos unidades de producto)
+ */
+async function applyStockDeltaWithIngredients(idProductos, deltaStock) {
+  if (typeof deltaStock !== 'number' || Number.isNaN(deltaStock) || deltaStock === 0) {
+    return { error: 'Cambio de stock inválido' };
+  }
+
+  const [product] = await db.query('SELECT * FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
+  if (!product.length) {
+    return { error: 'No existe el producto' };
+  }
+
+  const stockActual = Number(product[0].stock || 0);
+  const nuevoStockProducto = stockActual + deltaStock;
+  if (nuevoStockProducto < 0) {
+    return { error: 'El stock del producto no puede quedar negativo' };
+  }
+
+  const [ingredientes] = await db.query(INGREDIENTS_FOR_PRODUCT_SQL, [idProductos]);
+
+  if (!ingredientes.length) {
+    if (deltaStock > 0) {
+      return { error: 'No hay ingredientes asociados para aumentar stock' };
+    }
+    const [up] = await db.query('UPDATE PRODUCTO SET stock = ? WHERE idProductos = ?', [nuevoStockProducto, idProductos]);
+    return up.affectedRows
+      ? { message: 'Stock del producto actualizado', stock: nuevoStockProducto }
+      : { error: 'No se pudo actualizar el stock del producto' };
+  }
+
+  if (deltaStock > 0) {
+    for (const ing of ingredientes) {
+      const requerido = Number(ing.cantidadUsada || 0) * deltaStock;
+      const equivalencia = Number(ing.equivalencia || 1);
+      const disponible = ing.unidadComprada === ing.unidadDeMedida
+        ? Number(ing.cantidadComprada || 0)
+        : Number(ing.cantidadComprada || 0) * equivalencia;
+
+      if (requerido > disponible) {
+        return { error: `Stock insuficiente de ingrediente ${ing.idIngrediente}` };
+      }
+    }
+
+    for (const ing of ingredientes) {
+      const requerido = Number(ing.cantidadUsada || 0) * deltaStock;
+      const equivalencia = Number(ing.equivalencia || 1);
+      const nuevoStock = ing.unidadComprada === ing.unidadDeMedida
+        ? Number(ing.cantidadComprada || 0) - requerido
+        : Number(ing.cantidadComprada || 0) - (requerido / equivalencia);
+
+      const [updateIng] = await db.query('UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?', [nuevoStock, ing.idIngrediente]);
+      if (!updateIng.affectedRows) {
+        return { error: `No se pudo actualizar el stock del ingrediente ${ing.idIngrediente}` };
+      }
+    }
+  } else {
+    const absDelta = -deltaStock;
+    for (const ing of ingredientes) {
+      const devolver = Number(ing.cantidadUsada || 0) * absDelta;
+      const equivalencia = Number(ing.equivalencia || 1);
+      const nuevoStock = ing.unidadComprada === ing.unidadDeMedida
+        ? Number(ing.cantidadComprada || 0) + devolver
+        : Number(ing.cantidadComprada || 0) + (devolver / equivalencia);
+
+      const [updateIng] = await db.query('UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?', [nuevoStock, ing.idIngrediente]);
+      if (!updateIng.affectedRows) {
+        return { error: `No se pudo actualizar el stock del ingrediente ${ing.idIngrediente}` };
+      }
+    }
+  }
+
+  const [updateProduct] = await db.query('UPDATE PRODUCTO SET stock = ? WHERE idProductos = ?', [nuevoStockProducto, idProductos]);
+  if (!updateProduct.affectedRows) {
+    return { error: 'No se pudo actualizar el stock del producto' };
+  }
+
+  return { message: 'Stock del producto actualizado', stock: nuevoStockProducto };
+}
+
 const Producto = {
 
   create: async (product) => {
@@ -147,7 +236,16 @@ const Producto = {
 
       for (let i = 0; i < result.length; i++) {
         const [ingredientes] = await db.query(
-          'SELECT INGREDIENTE.nombre, INGREDIENTE.costo, PRODUCTO_X_INGREDIENTE.cantidadUsada FROM INGREDIENTE JOIN PRODUCTO_X_INGREDIENTE ON INGREDIENTE.idIngrediente = PRODUCTO_X_INGREDIENTE.idIngrediente WHERE PRODUCTO_X_INGREDIENTE.idProducto = ?',
+          `SELECT
+             INGREDIENTE.idIngrediente AS idIngrediente,
+             INGREDIENTE.nombre AS nombre,
+             INGREDIENTE.costo AS costo,
+             INGREDIENTE.unidadDeMedida AS unidadDeMedida,
+             INGREDIENTE.unidadComprada AS unidadComprada,
+             PRODUCTO_X_INGREDIENTE.cantidadUsada AS cantidadUsada
+           FROM INGREDIENTE
+           JOIN PRODUCTO_X_INGREDIENTE ON INGREDIENTE.idIngrediente = PRODUCTO_X_INGREDIENTE.idIngrediente
+           WHERE PRODUCTO_X_INGREDIENTE.idProducto = ?`,
           [result[i].idProductos]
         );
         result[i].ingredientes = ingredientes;
@@ -177,7 +275,16 @@ const Producto = {
       const porcentajeGanancia = ganancia.length ? Number(ganancia[0].porcentaje_ganancia ?? 100) : 100;
 
       const [ingredientes] = await db.query(
-        'SELECT INGREDIENTE.nombre, INGREDIENTE.costo, PRODUCTO_X_INGREDIENTE.cantidadUsada FROM INGREDIENTE JOIN PRODUCTO_X_INGREDIENTE ON INGREDIENTE.idIngrediente = PRODUCTO_X_INGREDIENTE.idIngrediente WHERE PRODUCTO_X_INGREDIENTE.idProducto = ?',
+        `SELECT
+           INGREDIENTE.idIngrediente AS idIngrediente,
+           INGREDIENTE.nombre AS nombre,
+           INGREDIENTE.costo AS costo,
+           INGREDIENTE.unidadDeMedida AS unidadDeMedida,
+           INGREDIENTE.unidadComprada AS unidadComprada,
+           PRODUCTO_X_INGREDIENTE.cantidadUsada AS cantidadUsada
+         FROM INGREDIENTE
+         JOIN PRODUCTO_X_INGREDIENTE ON INGREDIENTE.idIngrediente = PRODUCTO_X_INGREDIENTE.idIngrediente
+         WHERE PRODUCTO_X_INGREDIENTE.idProducto = ?`,
         [idProductos]
       );
 
@@ -218,61 +325,42 @@ const Producto = {
     }
   },
 
+  /** Solo aumento (compatibilidad API con body { delta }). */
   updateStockWithIngredients: async (idProductos, deltaStock) => {
     if (typeof deltaStock !== 'number' || Number.isNaN(deltaStock) || deltaStock <= 0) {
       return { error: 'El aumento de stock debe ser un número mayor a 0' };
     }
 
     try {
-      const [product] = await db.query('SELECT * FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
+      return await applyStockDeltaWithIngredients(idProductos, deltaStock);
+    } catch (error) {
+      console.error('Error al actualizar stock del producto:', error);
+      throw new Error('Error al actualizar stock del producto');
+    }
+  },
+
+  /** Stock final deseado: calcula delta y descuenta o devuelve ingredientes. */
+  setAbsoluteStockWithIngredients: async (idProductos, targetStock) => {
+    if (typeof targetStock !== 'number' || Number.isNaN(targetStock) || targetStock < 0) {
+      return { error: 'El stock objetivo debe ser un número mayor o igual a 0' };
+    }
+
+    try {
+      const [product] = await db.query('SELECT stock FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
       if (!product.length) {
         return { error: 'No existe el producto' };
       }
 
-      const [ingredientes] = await db.query(
-        'SELECT INGREDIENTE.idIngrediente, INGREDIENTE.cantidadComprada, INGREDIENTE.unidadComprada, INGREDIENTE.unidadDeMedida, INGREDIENTE.equivalencia, PRODUCTO_X_INGREDIENTE.cantidadUsada FROM INGREDIENTE JOIN PRODUCTO_X_INGREDIENTE ON INGREDIENTE.idIngrediente = PRODUCTO_X_INGREDIENTE.idIngrediente WHERE PRODUCTO_X_INGREDIENTE.idProducto = ?',
-        [idProductos]
-      );
-
-      if (!ingredientes.length) {
-        return { error: 'No hay ingredientes asociados para aumentar stock' };
+      const current = Number(product[0].stock || 0);
+      const delta = targetStock - current;
+      if (delta === 0) {
+        return { message: 'Sin cambios', stock: current };
       }
 
-      for (const ing of ingredientes) {
-        const requerido = Number(ing.cantidadUsada || 0) * deltaStock;
-        const equivalencia = Number(ing.equivalencia || 1);
-        const disponible = ing.unidadComprada === ing.unidadDeMedida
-          ? Number(ing.cantidadComprada || 0)
-          : Number(ing.cantidadComprada || 0) * equivalencia;
-
-        if (requerido > disponible) {
-          return { error: `Stock insuficiente de ingrediente ${ing.idIngrediente}` };
-        }
-      }
-
-      for (const ing of ingredientes) {
-        const requerido = Number(ing.cantidadUsada || 0) * deltaStock;
-        const equivalencia = Number(ing.equivalencia || 1);
-        const nuevoStock = ing.unidadComprada === ing.unidadDeMedida
-          ? Number(ing.cantidadComprada || 0) - requerido
-          : Number(ing.cantidadComprada || 0) - (requerido / equivalencia);
-
-        const [updateIng] = await db.query('UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?', [nuevoStock, ing.idIngrediente]);
-        if (!updateIng.affectedRows) {
-          return { error: `No se pudo actualizar el stock del ingrediente ${ing.idIngrediente}` };
-        }
-      }
-
-      const nuevoStockProducto = Number(product[0].stock || 0) + deltaStock;
-      const [updateProduct] = await db.query('UPDATE PRODUCTO SET stock = ? WHERE idProductos = ?', [nuevoStockProducto, idProductos]);
-      if (!updateProduct.affectedRows) {
-        return { error: 'No se pudo actualizar el stock del producto' };
-      }
-
-      return { message: 'Stock del producto actualizado', stock: nuevoStockProducto };
+      return await applyStockDeltaWithIngredients(idProductos, delta);
     } catch (error) {
-      console.error('Error al actualizar stock del producto:', error);
-      throw new Error('Error al actualizar stock del producto');
+      console.error('Error al fijar stock del producto:', error);
+      throw new Error('Error al fijar stock del producto');
     }
   },
 
@@ -290,8 +378,22 @@ const Producto = {
     }
   },
 
+  updateName: async (idProductos, nombre) => {
+    if (typeof nombre !== 'string' || !nombre.trim()) {
+      return { error: 'El nombre es inválido' };
+    }
+
+    try {
+      const [result] = await db.query('UPDATE PRODUCTO SET nombre = ? WHERE idProductos = ?', [nombre.trim(), idProductos]);
+      return result.affectedRows ? { message: 'Nombre actualizado con éxito' } : { error: 'No se pudo actualizar el nombre' };
+    } catch (error) {
+      console.error('Error al actualizar el nombre:', error);
+      throw new Error('Error al actualizar el nombre');
+    }
+  },
+
   updateDescription: async (idProductos, descripcion) => {
-    if (!descripcion || typeof descripcion !== 'string') {
+    if (typeof descripcion !== 'string') {
       return { error: 'La descripción es inválida' };
     }
 
@@ -315,6 +417,98 @@ const Producto = {
     } catch (error) {
       console.error('Error al actualizar la imagen:', error);
       throw new Error('Error al actualizar la imagen');
+    }
+  },
+
+  /**
+   * Agrega un ingrediente a la receta de un producto existente.
+   * Si el producto tiene stock > 0, descuenta del ingrediente la cantidad total (receta × stock), igual que al crear.
+   */
+  addRecipeIngredient: async (idProductos, idIngrediente, cantidadUsada) => {
+    const qty = Number(cantidadUsada);
+    if (!idIngrediente || Number.isNaN(qty) || qty <= 0) {
+      return { error: 'Datos de ingrediente inválidos' };
+    }
+
+    try {
+      const [product] = await db.query('SELECT * FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
+      if (!product.length) {
+        return { error: 'No existe el producto' };
+      }
+
+      const stockProd = Math.max(0, Number(product[0].stock || 0));
+
+      const [dup] = await db.query(
+        'SELECT 1 FROM PRODUCTO_X_INGREDIENTE WHERE idProducto = ? AND idIngrediente = ?',
+        [idProductos, idIngrediente]
+      );
+      if (dup.length) {
+        return { error: 'Ese ingrediente ya está en la fórmula' };
+      }
+
+      const [ingredientRows] = await db.query('SELECT * FROM INGREDIENTE WHERE idIngrediente = ?', [idIngrediente]);
+      if (!ingredientRows.length) {
+        return { error: 'No existe el ingrediente' };
+      }
+      const ingredienteData = ingredientRows[0];
+
+      if (stockProd > 0) {
+        const cantidadTotalUsada = qty * stockProd;
+        let newStock = 0;
+        if (ingredienteData.unidadComprada !== ingredienteData.unidadDeMedida) {
+          if (!ingredienteData.equivalencia || Number(ingredienteData.equivalencia) === 0) {
+            return { error: 'La equivalencia no está definida para este ingrediente' };
+          }
+          const totalDisponible = parseFloat(ingredienteData.cantidadComprada) * Number(ingredienteData.equivalencia);
+          if (cantidadTotalUsada > totalDisponible) {
+            return { error: 'No hay stock suficiente de este ingrediente para el stock actual del producto' };
+          }
+          newStock = parseFloat(ingredienteData.cantidadComprada) - (cantidadTotalUsada / Number(ingredienteData.equivalencia));
+        } else {
+          if (cantidadTotalUsada > parseFloat(ingredienteData.cantidadComprada)) {
+            return { error: 'No hay stock suficiente de este ingrediente para el stock actual del producto' };
+          }
+          newStock = parseFloat(ingredienteData.cantidadComprada) - cantidadTotalUsada;
+        }
+        const [upIng] = await db.query(
+          'UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?',
+          [newStock, idIngrediente]
+        );
+        if (!upIng.affectedRows) {
+          return { error: 'No se pudo actualizar el stock del ingrediente' };
+        }
+      }
+
+      const [ins] = await db.query(
+        'INSERT INTO PRODUCTO_X_INGREDIENTE (idProducto, idIngrediente, cantidadUsada) VALUES (?, ?, ?)',
+        [idProductos, idIngrediente, qty]
+      );
+      if (!ins.affectedRows) {
+        return { error: 'No se pudo asociar el ingrediente al producto' };
+      }
+
+      const [ganancia] = await db.query('SELECT porcentaje_ganancia FROM USUARIO WHERE idUsuario = 1');
+      const porcentajeGanancia = ganancia.length ? Number(ganancia[0].porcentaje_ganancia ?? 100) : 100;
+      const [ingredientes] = await db.query(
+        `SELECT
+           INGREDIENTE.costo AS costo,
+           PRODUCTO_X_INGREDIENTE.cantidadUsada AS cantidadUsada
+         FROM INGREDIENTE
+         JOIN PRODUCTO_X_INGREDIENTE ON INGREDIENTE.idIngrediente = PRODUCTO_X_INGREDIENTE.idIngrediente
+         WHERE PRODUCTO_X_INGREDIENTE.idProducto = ?`,
+        [idProductos]
+      );
+      const costoUnitario = ingredientes.reduce(
+        (acc, item) => acc + (Number(item.cantidadUsada || 0) * Number(item.costo || 0)),
+        0
+      );
+      const precioNuevo = costoUnitario * (1 + (porcentajeGanancia / 100));
+      await db.query('UPDATE PRODUCTO SET precio = ? WHERE idProductos = ?', [precioNuevo, idProductos]);
+
+      return { message: 'Ingrediente agregado a la fórmula' };
+    } catch (error) {
+      console.error('Error al agregar ingrediente a la receta:', error);
+      throw new Error('Error al agregar ingrediente a la receta');
     }
   },
 

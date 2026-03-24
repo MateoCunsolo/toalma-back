@@ -12,6 +12,7 @@ router.get('/:id', productosController.getProductoById);
 router.get('/categoria/:categoria', productosController.getProductosByCategory);
 
 //ACTUALIZAR
+router.post('/recipe-ingredient/:id', authGuard, productosController.addRecipeIngredientToProduct);
 router.put('/update/all-imagenes', authGuard, productosController.updateALLIMG);
 router.put('/update/stock/:id', authGuard, productosController.updateProductoStockById);
 router.put('/update/stock-increase/:id', authGuard, productosController.increaseProductoStock);

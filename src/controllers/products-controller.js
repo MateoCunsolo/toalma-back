@@ -67,8 +67,11 @@ const updateProductoStockById = async (req, res) => {
 const increaseProductoStock = async (req, res) => {
   try {
     const { id } = req.params;
-    const { delta } = req.body;
-    const result = await productoModel.updateStockWithIngredients(id, Number(delta));
+    const { delta, targetStock } = req.body;
+    const hasTarget = targetStock !== undefined && targetStock !== null && String(targetStock).trim() !== '';
+    const result = hasTarget
+      ? await productoModel.setAbsoluteStockWithIngredients(id, Number(targetStock))
+      : await productoModel.updateStockWithIngredients(id, Number(delta));
     if (result.error) {
       return res.status(400).json({ error: result.error });
     }
@@ -119,7 +122,7 @@ const updateProductoImgById = async (req, res) => {
   try {
     const { id } = req.params;
     const img = req.body.img;
-    const result = await productoModel.updateImg(id, img);
+    const result = await productoModel.updateImage(id, img);
     res.status(200).json(result);
   } catch (error) {
     console.error('Error al actualizar producto:', error.message);
@@ -172,7 +175,7 @@ const updateALLIMG = async (req, res) => {
   } else {
     try {
       productos.forEach(async (producto) => {
-        const result = await productoModel.updateImg(producto.id, producto.imagen_url);
+        const result = await productoModel.updateImage(producto.id, producto.imagen_url);
       });
       res.status(200).json({ message: 'Imagenes actualizadas con éxito' });
     } catch (error) {
@@ -184,6 +187,21 @@ const updateALLIMG = async (req, res) => {
 };
 
 
+
+const addRecipeIngredientToProduct = async (req, res) => {
+  try {
+    const idProductos = Number(req.params.id);
+    const { idIngrediente, cantidadUsada } = req.body || {};
+    const result = await productoModel.addRecipeIngredient(idProductos, idIngrediente, cantidadUsada);
+    if (result.error) {
+      return res.status(400).json(result);
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error al agregar ingrediente a la receta:', error.message);
+    res.status(500).json({ error: 'Error al agregar ingrediente a la receta' });
+  }
+};
 
 module.exports = {
   getProductos,
@@ -200,5 +218,5 @@ module.exports = {
   createProducto,
   deleteProductoById,
   updateALLIMG,
-  increaseProductoStock
+  addRecipeIngredientToProduct
 };
