@@ -52,6 +52,32 @@ const ensurePurchaseTable = async () => {
     `);
 };
 
+const ensureFechaCreacionColumn = async () => {
+    try {
+        await ensurePurchaseTable();
+        const [cols] = await db.query(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'INGREDIENTE' AND COLUMN_NAME = 'fechaCreacion'`
+        );
+        if (!cols.length) {
+            await db.query(
+                'ALTER TABLE INGREDIENTE ADD COLUMN fechaCreacion DATETIME NULL DEFAULT NULL'
+            );
+            await db.query(`
+                UPDATE INGREDIENTE i
+                LEFT JOIN (
+                    SELECT idIngrediente, MIN(fecha) AS first_fecha 
+                    FROM INGREDIENTE_COMPRA GROUP BY idIngrediente
+                ) c ON i.idIngrediente = c.idIngrediente
+                SET i.fechaCreacion = COALESCE(c.first_fecha, NOW())
+                WHERE i.fechaCreacion IS NULL
+            `);
+        }
+    } catch (error) {
+        console.error('ensureFechaCreacionColumn:', error);
+    }
+};
+
 const ensureAuditTable = async () => {
     await db.query(`
         CREATE TABLE IF NOT EXISTS INGREDIENTE_AUDIT (
@@ -88,6 +114,7 @@ const Ingredient = {
     // Obtener todos los ingredientes
     getAll: async () => {
         try {
+            await ensureFechaCreacionColumn();
             const query = 'SELECT * FROM INGREDIENTE';
             const [rows] = await db.query(query);
             if (rows.length === 0) {
@@ -139,8 +166,19 @@ const Ingredient = {
             const precioUnitario = Number(precioComprado) / Number(cantidadComprada);
             let costoActual = precioUnitario / equivalencia;
 
-            const query = 'INSERT INTO INGREDIENTE (nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, costo, idCategoriaIngrediente) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
-            const [result] = await db.query(query, [nombre, cantidadComprada, unidadComprada, precioUnitario, unidadDeMedida, equivalencia, costoActual, idCategoriaIngrediente]);
+            await ensureFechaCreacionColumn();
+            const query =
+                'INSERT INTO INGREDIENTE (nombre, cantidadComprada, unidadComprada, precioComprado, unidadDeMedida, equivalencia, costo, idCategoriaIngrediente, fechaCreacion) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())';
+            const [result] = await db.query(query, [
+                nombre,
+                cantidadComprada,
+                unidadComprada,
+                precioUnitario,
+                unidadDeMedida,
+                equivalencia,
+                costoActual,
+                idCategoriaIngrediente
+            ]);
 
             if (result.affectedRows > 0) {
                 await ensurePurchaseTable();
