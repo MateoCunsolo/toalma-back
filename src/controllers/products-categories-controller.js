@@ -28,7 +28,20 @@ const deleteCategoriaById = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error });
   }
-}
+};
 
+const updateCategoriaById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre } = req.body || {};
+    const result = await Categoria.updateById(id, nombre);
+    if (result.error) {
+      return res.status(400).json(result);
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar categoría' });
+  }
+};
 
-module.exports = { getCategorias, createCategoria, deleteCategoriaById};
+module.exports = { getCategorias, createCategoria, deleteCategoriaById, updateCategoriaById };

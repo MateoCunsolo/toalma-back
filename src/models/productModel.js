@@ -12,13 +12,14 @@ const INGREDIENTS_FOR_PRODUCT_SQL = `
 /**
  * deltaStock > 0: descuenta ingredientes (más unidades de producto)
  * deltaStock < 0: devuelve ingredientes al inventario (menos unidades de producto)
+ * @param {(sql: string, params: unknown[]) => Promise<unknown>} queryAsync pool/connection .query
  */
-async function applyStockDeltaWithIngredients(idProductos, deltaStock) {
+async function applyStockDeltaWithIngredientsQuery(queryAsync, idProductos, deltaStock) {
   if (typeof deltaStock !== 'number' || Number.isNaN(deltaStock) || deltaStock === 0) {
     return { error: 'Cambio de stock inválido' };
   }
 
-  const [product] = await db.query('SELECT * FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
+  const [product] = await queryAsync('SELECT * FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
   if (!product.length) {
     return { error: 'No existe el producto' };
   }
@@ -29,13 +30,13 @@ async function applyStockDeltaWithIngredients(idProductos, deltaStock) {
     return { error: 'El stock del producto no puede quedar negativo' };
   }
 
-  const [ingredientes] = await db.query(INGREDIENTS_FOR_PRODUCT_SQL, [idProductos]);
+  const [ingredientes] = await queryAsync(INGREDIENTS_FOR_PRODUCT_SQL, [idProductos]);
 
   if (!ingredientes.length) {
     if (deltaStock > 0) {
       return { error: 'No hay ingredientes asociados para aumentar stock' };
     }
-    const [up] = await db.query('UPDATE PRODUCTO SET stock = ? WHERE idProductos = ?', [nuevoStockProducto, idProductos]);
+    const [up] = await queryAsync('UPDATE PRODUCTO SET stock = ? WHERE idProductos = ?', [nuevoStockProducto, idProductos]);
     return up.affectedRows
       ? { message: 'Stock del producto actualizado', stock: nuevoStockProducto }
       : { error: 'No se pudo actualizar el stock del producto' };
@@ -61,7 +62,7 @@ async function applyStockDeltaWithIngredients(idProductos, deltaStock) {
         ? Number(ing.cantidadComprada || 0) - requerido
         : Number(ing.cantidadComprada || 0) - (requerido / equivalencia);
 
-      const [updateIng] = await db.query('UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?', [nuevoStock, ing.idIngrediente]);
+      const [updateIng] = await queryAsync('UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?', [nuevoStock, ing.idIngrediente]);
       if (!updateIng.affectedRows) {
         return { error: `No se pudo actualizar el stock del ingrediente ${ing.idIngrediente}` };
       }
@@ -75,14 +76,14 @@ async function applyStockDeltaWithIngredients(idProductos, deltaStock) {
         ? Number(ing.cantidadComprada || 0) + devolver
         : Number(ing.cantidadComprada || 0) + (devolver / equivalencia);
 
-      const [updateIng] = await db.query('UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?', [nuevoStock, ing.idIngrediente]);
+      const [updateIng] = await queryAsync('UPDATE INGREDIENTE SET cantidadComprada = ? WHERE idIngrediente = ?', [nuevoStock, ing.idIngrediente]);
       if (!updateIng.affectedRows) {
         return { error: `No se pudo actualizar el stock del ingrediente ${ing.idIngrediente}` };
       }
     }
   }
 
-  const [updateProduct] = await db.query('UPDATE PRODUCTO SET stock = ? WHERE idProductos = ?', [nuevoStockProducto, idProductos]);
+  const [updateProduct] = await queryAsync('UPDATE PRODUCTO SET stock = ? WHERE idProductos = ?', [nuevoStockProducto, idProductos]);
   if (!updateProduct.affectedRows) {
     return { error: 'No se pudo actualizar el stock del producto' };
   }
@@ -90,19 +91,46 @@ async function applyStockDeltaWithIngredients(idProductos, deltaStock) {
   return { message: 'Stock del producto actualizado', stock: nuevoStockProducto };
 }
 
+async function applyStockDeltaWithIngredients(idProductos, deltaStock) {
+  return applyStockDeltaWithIngredientsQuery((sql, params) => db.query(sql, params), idProductos, deltaStock);
+}
+
+async function setAbsoluteStockWithIngredientsQuery(queryAsync, idProductos, targetStock) {
+  if (typeof targetStock !== 'number' || Number.isNaN(targetStock) || targetStock < 0) {
+    return { error: 'El stock objetivo debe ser un número mayor o igual a 0' };
+  }
+
+  try {
+    const [product] = await queryAsync('SELECT stock FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
+    if (!product.length) {
+      return { error: 'No existe el producto' };
+    }
+
+    const current = Number(product[0].stock || 0);
+    const delta = targetStock - current;
+    if (delta === 0) {
+      return { message: 'Sin cambios', stock: current };
+    }
+
+    return await applyStockDeltaWithIngredientsQuery(queryAsync, idProductos, delta);
+  } catch (error) {
+    console.error('Error al fijar stock del producto:', error);
+    throw new Error('Error al fijar stock del producto');
+  }
+}
+
 const Producto = {
 
   create: async (product) => {
     const { idCategoria, nombre, stock, descripcion, imagen, ingredientes } = product;
 
-    // Validaciones de campos
-    if (!idCategoria || !nombre || !stock || !descripcion || !imagen || !ingredientes) {
+    // Validaciones de campos (imagen opcional: vacía o ausente = sin foto)
+    if (!idCategoria || nombre === undefined || nombre === null || !String(nombre).trim() || stock === undefined || stock === null || descripcion === undefined || descripcion === null || !ingredientes) {
       return { error: 'Faltan campos obligatorios: '
         + (idCategoria ? '' : 'idCategoria ')
-        + (nombre ? '' : 'nombre ')
-        + (stock ? '' : 'stock ')
-        + (descripcion ? '' : 'descripcion ')
-        + (imagen ? '' : 'imagen ')
+        + ((nombre !== undefined && nombre !== null && String(nombre).trim()) ? '' : 'nombre ')
+        + ((stock !== undefined && stock !== null) ? '' : 'stock ')
+        + ((descripcion !== undefined && descripcion !== null) ? '' : 'descripcion ')
         + (ingredientes ? '' : 'ingredientes')
        };
     }
@@ -115,8 +143,12 @@ const Producto = {
       return { error: 'La descripción es inválida' };
     }
 
-    if (typeof imagen !== 'string') {
-      return { error: 'La URL de la imagen es inválida' };
+    let imagenStr = '';
+    if (imagen != null && String(imagen).trim() !== '') {
+      if (typeof imagen !== 'string') {
+        return { error: 'La URL de la imagen es inválida' };
+      }
+      imagenStr = imagen.trim();
     }
 
     if (!Array.isArray(ingredientes) || ingredientes.length === 0) {
@@ -155,7 +187,7 @@ const Producto = {
         `;
 
 
-      const valuesProducto = [idCategoria, nombre, precioFinal, stock, descripcion, imagen];
+      const valuesProducto = [idCategoria, nombre, precioFinal, stock, descripcion, imagenStr];
       const [result] = await db.query(queryProducto, valuesProducto);
       const idProducto = result.insertId;
 
@@ -332,7 +364,7 @@ const Producto = {
     }
 
     try {
-      return await applyStockDeltaWithIngredients(idProductos, deltaStock);
+      return await applyStockDeltaWithIngredientsQuery((sql, params) => db.query(sql, params), idProductos, deltaStock);
     } catch (error) {
       console.error('Error al actualizar stock del producto:', error);
       throw new Error('Error al actualizar stock del producto');
@@ -341,25 +373,20 @@ const Producto = {
 
   /** Stock final deseado: calcula delta y descuenta o devuelve ingredientes. */
   setAbsoluteStockWithIngredients: async (idProductos, targetStock) => {
-    if (typeof targetStock !== 'number' || Number.isNaN(targetStock) || targetStock < 0) {
-      return { error: 'El stock objetivo debe ser un número mayor o igual a 0' };
-    }
-
     try {
-      const [product] = await db.query('SELECT stock FROM PRODUCTO WHERE idProductos = ?', [idProductos]);
-      if (!product.length) {
-        return { error: 'No existe el producto' };
-      }
-
-      const current = Number(product[0].stock || 0);
-      const delta = targetStock - current;
-      if (delta === 0) {
-        return { message: 'Sin cambios', stock: current };
-      }
-
-      return await applyStockDeltaWithIngredients(idProductos, delta);
+      return await setAbsoluteStockWithIngredientsQuery((sql, params) => db.query(sql, params), idProductos, targetStock);
     } catch (error) {
       console.error('Error al fijar stock del producto:', error);
+      throw new Error('Error al fijar stock del producto');
+    }
+  },
+
+  /** Igual que setAbsoluteStockWithIngredients pero usando la conexión dada (transacciones). */
+  setAbsoluteStockWithIngredientsConn: async (conn, idProductos, targetStock) => {
+    try {
+      return await setAbsoluteStockWithIngredientsQuery((sql, params) => conn.query(sql, params), idProductos, targetStock);
+    } catch (error) {
+      console.error('Error al fijar stock del producto (tx):', error);
       throw new Error('Error al fijar stock del producto');
     }
   },

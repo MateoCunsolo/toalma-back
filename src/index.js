@@ -22,6 +22,7 @@ const productsCategoriesRoutes = require('./routes/products-categories-routes');
 //Ingredients
 const ingredientsRoutes = require('./routes/ingredients-routes');
 const ingredientsCategoriesRoutes = require('./routes/ingredients-categories-routes');
+const salesRoutes = require('./routes/sales-routes');
 
 
 // ================================================= Rutas ==================================================
@@ -42,6 +43,7 @@ app.use('/categorias-ingredientes', ingredientsCategoriesRoutes);
 // Rutas de usuarios
 app.use('/auth', authRoutes);
 app.use('/settings', settingsRoutes);
+app.use('/ventas', salesRoutes);
 
 // Manejo de rutas no encontradas
 app.use((req, res, next) => {

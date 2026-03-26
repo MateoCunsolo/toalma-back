@@ -23,6 +23,32 @@ const Categoria = {
     }
   },
 
+  updateById: async (idCategoria, nombre) => {
+    try {
+      if (!idCategoria || !nombre || !String(nombre).trim()) {
+        return { error: 'Nombre de categoría inválido' };
+      }
+      const name = String(nombre).trim();
+      const [dup] = await db.query(
+        'SELECT idCategoria FROM CATEGORIA_PRODUCTO WHERE nombre = ? AND idCategoria != ?',
+        [name, idCategoria]
+      );
+      if (dup.length > 0) {
+        return { error: 'Ya existe otra categoría de producto con ese nombre' };
+      }
+      const [result] = await db.query(
+        'UPDATE CATEGORIA_PRODUCTO SET nombre = ? WHERE idCategoria = ?',
+        [name, idCategoria]
+      );
+      return result.affectedRows
+        ? { message: 'Categoría actualizada con éxito' }
+        : { error: 'No se encontró la categoría' };
+    } catch (error) {
+      console.error('Error al actualizar la categoría:', error);
+      throw new Error('Error al actualizar la categoría');
+    }
+  },
+
   deleteById: async (idCategoria) => {
     try {
       const [productos] = await db.query('SELECT * FROM PRODUCTO WHERE idCategoria = ?', [idCategoria]);

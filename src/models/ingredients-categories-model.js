@@ -66,8 +66,17 @@ const CategoriaIngrediente = {
                 return { success: false, message: 'El nombre de la categoría es obligatorio.' };
             }
 
+            const nombreTrim = String(categoria.nombre).trim();
+            const [dup] = await db.query(
+                'SELECT idCategoriaIngrediente FROM CATEGORIA_INGREDIENTE WHERE nombre = ? AND idCategoriaIngrediente != ?',
+                [nombreTrim, id]
+            );
+            if (dup.length > 0) {
+                return { success: false, message: 'Ya existe otra categoría de ingredientes con ese nombre.' };
+            }
+
             const query = 'UPDATE CATEGORIA_INGREDIENTE SET nombre = ? WHERE idCategoriaIngrediente = ?';
-            const [result] = await db.query(query, [categoria.nombre, id]);
+            const [result] = await db.query(query, [nombreTrim, id]);
 
             if (result.affectedRows > 0) {
                 return { success: true, message: `Categoría con ID ${id} actualizada correctamente.` };
